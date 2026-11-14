@@ -1,0 +1,1627 @@
+-- ═══════════════════════════════════════════
+--  🔒 WHITELIST (ไม่บังคับใช้แล้ว — เก็บไว้เผื่ออนาคต)
+-- ═══════════════════════════════════════════
+local ALLOWED_IDS = {
+    [9081672034]  = true,
+    [7506004662]  = true,
+    [2883477650]  = true,
+    [10120157484] = true,
+}
+
+local Players      = game:GetService("Players")
+local UIS          = game:GetService("UserInputService")
+local RunService   = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui      = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+
+-- ─── CONFIG ───
+local SPEED      = 80
+local MIN_SPEED  = 5
+local MAX_SPEED  = 5000
+local VEL_SMOOTH = 3
+local DEBUG      = true
+local UI_HIDE_KEY = Enum.KeyCode.RightShift
+
+local ICON_ID = "rbxassetid://126994849272867"
+
+local flying   = false
+local typing   = false
+local curVel   = Vector3.zero
+local bv, bg, hum, root
+local savedWalk, savedJump
+local PlayerModule, Controls
+local stateConn
+local refreshUI = function() end
+
+-- ─── KEYBIND ───
+local TOGGLE_KEY   = Enum.KeyCode.F
+local TOGGLE_MOUSE = nil
+local capturingKey = false
+local captureStart = 0
+local updateKeybindLabel = function() end
+
+-- ─── COLORS ───
+local C = {
+    bg       = Color3.fromRGB(236, 238, 244),
+    panel    = Color3.fromRGB(255, 255, 255),
+    card     = Color3.fromRGB(246, 247, 250),
+    cardHi   = Color3.fromRGB(228, 231, 238),
+    accent   = Color3.fromRGB(50, 53, 66),
+    accent2  = Color3.fromRGB(104, 108, 124),
+    text     = Color3.fromRGB(30, 32, 40),
+    textDim  = Color3.fromRGB(122, 126, 140),
+    success  = Color3.fromRGB(58, 61, 74),
+    danger   = Color3.fromRGB(40, 42, 52),
+    stroke   = Color3.fromRGB(214, 217, 226),
+}
+
+local AURA_IDLE = Color3.fromRGB(198, 202, 214)
+local AURA_FLY  = Color3.fromRGB(112, 116, 132)
+
+-- ═══════════════════════════════════════════
+--  🔐 LOGIN SCREEN
+--  - กรอก Roblox UserId + Roblox Username
+--  - ตรวจว่าทั้งคู่มีจริงและตรงกันบน Roblox
+-- ═══════════════════════════════════════════
+do
+    local gp = player:FindFirstChild("PlayerGui") or CoreGui
+
+    local loginGui = Instance.new("ScreenGui")
+    loginGui.Name = "FlyLogin"
+    loginGui.ResetOnSpawn = false
+    loginGui.IgnoreGuiInset = true
+    loginGui.DisplayOrder = 2000
+    loginGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    loginGui.Parent = gp
+
+    local dim = Instance.new("Frame")
+    dim.Size = UDim2.fromScale(1, 1)
+    dim.BackgroundColor3 = Color3.fromRGB(226, 229, 238)
+    dim.BackgroundTransparency = 1
+    dim.BorderSizePixel = 0
+    dim.Parent = loginGui
+    TweenService:Create(dim, TweenInfo.new(0.4), { BackgroundTransparency = 0.25 }):Play()
+
+    local LW, LH = 320, 286
+    local loginCard = Instance.new("Frame")
+    loginCard.AnchorPoint = Vector2.new(0.5, 0.5)
+    loginCard.Position = UDim2.fromScale(0.5, 0.5)
+    loginCard.Size = UDim2.fromOffset(LW, LH)
+    loginCard.BackgroundColor3 = C.panel
+    loginCard.BorderSizePixel = 0
+    loginCard.Parent = loginGui
+
+    local lc = Instance.new("UICorner")
+    lc.CornerRadius = UDim.new(0, 18)
+    lc.Parent = loginCard
+    local ls = Instance.new("UIStroke")
+    ls.Color = C.accent2
+    ls.Thickness = 1.5
+    ls.Transparency = 0.4
+    ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    ls.Parent = loginCard
+    local lg = Instance.new("UIGradient")
+    lg.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(240, 242, 248))
+    lg.Rotation = 90
+    lg.Parent = loginCard
+
+    local badge = Instance.new("Frame")
+    badge.Size = UDim2.fromOffset(34, 34)
+    badge.Position = UDim2.new(0.5, -17, 0, 18)
+    badge.BackgroundTransparency = 1
+    badge.Parent = loginCard
+    local badgeIcon = Instance.new("ImageLabel")
+    badgeIcon.Size = UDim2.fromScale(1, 1)
+    badgeIcon.BackgroundTransparency = 1
+    badgeIcon.Image = ICON_ID
+    badgeIcon.ScaleType = Enum.ScaleType.Fit
+    badgeIcon.Parent = badge
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Position = UDim2.fromOffset(0, 58)
+    title.BackgroundTransparency = 1
+    title.Text = "LA • Login"
+    title.TextColor3 = C.text
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 15
+    title.Parent = loginCard
+
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Size = UDim2.new(1, -40, 0, 14)
+    subtitle.Position = UDim2.fromOffset(20, 80)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "Enter your real Roblox UserId and Username"
+    subtitle.TextColor3 = C.textDim
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextSize = 11
+    subtitle.Parent = loginCard
+
+    -- ─── ID INPUT ───
+    local idInput = Instance.new("TextBox")
+    idInput.Size = UDim2.new(1, -40, 0, 38)
+    idInput.Position = UDim2.fromOffset(20, 100)
+    idInput.BackgroundColor3 = C.bg
+    idInput.BorderSizePixel = 0
+    idInput.Text = ""
+    idInput.PlaceholderText = "Roblox UserId (e.g. 9081672034)"
+    idInput.PlaceholderColor3 = C.textDim
+    idInput.TextColor3 = C.text
+    idInput.Font = Enum.Font.GothamBold
+    idInput.TextSize = 13
+    idInput.ClearTextOnFocus = false
+    idInput.Parent = loginCard
+    local ic1 = Instance.new("UICorner")
+    ic1.CornerRadius = UDim.new(0, 8)
+    ic1.Parent = idInput
+    local ist1 = Instance.new("UIStroke")
+    ist1.Color = C.stroke
+    ist1.Thickness = 1
+    ist1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    ist1.Parent = idInput
+    idInput.Focused:Connect(function()
+        TweenService:Create(ist1, TweenInfo.new(0.2), { Color = C.accent2 }):Play()
+    end)
+    idInput.FocusLost:Connect(function()
+        TweenService:Create(ist1, TweenInfo.new(0.2), { Color = C.stroke }):Play()
+    end)
+
+    -- ─── USERNAME INPUT ───
+    local userInput = Instance.new("TextBox")
+    userInput.Size = UDim2.new(1, -40, 0, 38)
+    userInput.Position = UDim2.fromOffset(20, 144)
+    userInput.BackgroundColor3 = C.bg
+    userInput.BorderSizePixel = 0
+    userInput.Text = ""
+    userInput.PlaceholderText = "Roblox Username (e.g. Roblox)"
+    userInput.PlaceholderColor3 = C.textDim
+    userInput.TextColor3 = C.text
+    userInput.Font = Enum.Font.GothamBold
+    userInput.TextSize = 13
+    userInput.ClearTextOnFocus = false
+    userInput.Parent = loginCard
+    local ic2 = Instance.new("UICorner")
+    ic2.CornerRadius = UDim.new(0, 8)
+    ic2.Parent = userInput
+    local ist2 = Instance.new("UIStroke")
+    ist2.Color = C.stroke
+    ist2.Thickness = 1
+    ist2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    ist2.Parent = userInput
+    userInput.Focused:Connect(function()
+        TweenService:Create(ist2, TweenInfo.new(0.2), { Color = C.accent2 }):Play()
+    end)
+    userInput.FocusLost:Connect(function()
+        TweenService:Create(ist2, TweenInfo.new(0.2), { Color = C.stroke }):Play()
+    end)
+
+    -- ─── ERROR LABEL ───
+    local err = Instance.new("TextLabel")
+    err.Size = UDim2.new(1, -40, 0, 16)
+    err.Position = UDim2.fromOffset(20, 186)
+    err.BackgroundTransparency = 1
+    err.Text = ""
+    err.TextColor3 = Color3.fromRGB(170, 55, 55)
+    err.Font = Enum.Font.GothamMedium
+    err.TextSize = 10
+    err.TextXAlignment = Enum.TextXAlignment.Left
+    err.TextWrapped = true
+    err.Parent = loginCard
+
+    -- ─── SUBMIT BUTTON ───
+    local submit = Instance.new("TextButton")
+    submit.Size = UDim2.new(1, -40, 0, 40)
+    submit.Position = UDim2.fromOffset(20, 208)
+    submit.BackgroundColor3 = C.accent
+    submit.BorderSizePixel = 0
+    submit.Text = "Continue"
+    submit.TextColor3 = Color3.new(1, 1, 1)
+    submit.Font = Enum.Font.GothamBold
+    submit.TextSize = 13
+    submit.AutoButtonColor = false
+    submit.Parent = loginCard
+    local scc = Instance.new("UICorner")
+    scc.CornerRadius = UDim.new(0, 8)
+    scc.Parent = submit
+    submit.MouseEnter:Connect(function()
+        if submit.BackgroundColor3 == C.accent then
+            TweenService:Create(submit, TweenInfo.new(0.2), { BackgroundColor3 = C.accent2 }):Play()
+        end
+    end)
+    submit.MouseLeave:Connect(function()
+        if submit.BackgroundColor3 ~= C.success then
+            TweenService:Create(submit, TweenInfo.new(0.25), { BackgroundColor3 = C.accent }):Play()
+        end
+    end)
+
+    local function shake()
+        for i = 1, 6 do
+            local off = (i % 2 == 0) and 6 or -6
+            TweenService:Create(loginCard, TweenInfo.new(0.04), {
+                Position = UDim2.new(0.5, off, 0.5, 0)
+            }):Play()
+            task.wait(0.04)
+        end
+        TweenService:Create(loginCard, TweenInfo.new(0.1), {
+            Position = UDim2.fromScale(0.5, 0.5)
+        }):Play()
+    end
+
+    local authorized = false
+    local checking   = false
+
+    local function setErr(msg, isError)
+        err.TextColor3 = isError and Color3.fromRGB(170, 55, 55) or C.textDim
+        err.Text = msg
+    end
+
+    local function tryAuth()
+        if authorized or checking then return end
+
+        local rawId   = (idInput.Text   or ""):gsub("%s", "")
+        local rawUser = (userInput.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
+        local n = tonumber(rawId)
+        if not n or n < 1 then
+            setErr("Please enter a valid numeric UserId", true)
+            shake()
+            return
+        end
+        if rawUser == "" then
+            setErr("Please enter your Roblox Username", true)
+            shake()
+            return
+        end
+        n = math.floor(n)
+
+        checking = true
+        setErr("Verifying with Roblox...", false)
+        submit.Text = "Checking..."
+        submit.BackgroundColor3 = C.accent2
+
+        task.spawn(function()
+            -- ดึงชื่อจริงของ ID จาก Roblox
+            local ok, realName = pcall(function()
+                return Players:GetNameFromUserIdAsync(n)
+            end)
+
+            if authorized then return end
+            checking = false
+
+            -- (1) ID มีจริงไหม
+            if not ok or type(realName) ~= "string" or realName == "" then
+                setErr("This Roblox UserId does not exist", true)
+                submit.Text = "Continue"
+                submit.BackgroundColor3 = C.accent
+                shake()
+                return
+            end
+
+            -- (2) Username ตรงกับ ID ไหม (เทียบแบบไม่สนตัวพิมพ์)
+            if string.lower(realName) ~= string.lower(rawUser) then
+                setErr("UserId and Username do not match", true)
+                submit.Text = "Continue"
+                submit.BackgroundColor3 = C.accent
+                shake()
+                return
+            end
+
+            -- ✅ ผ่าน — ทั้งคู่ถูกต้องและตรงกัน
+            authorized = true
+            err.TextColor3 = Color3.fromRGB(55, 130, 80)
+            err.Text = "✓ Verified: " .. realName
+            submit.Text = "✓ Login Success"
+            submit.BackgroundColor3 = C.success
+
+            TweenService:Create(loginCard, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                Size = UDim2.fromOffset(LW * 0.9, LH * 0.9),
+            }):Play()
+            TweenService:Create(loginCard, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+            TweenService:Create(ls, TweenInfo.new(0.35), { Transparency = 1 }):Play()
+            TweenService:Create(dim, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+        end)
+    end
+
+    submit.MouseButton1Click:Connect(tryAuth)
+    idInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed then tryAuth() end
+    end)
+    userInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed then tryAuth() end
+    end)
+
+    -- block flow จนกว่าจะ authorize
+    while not authorized do
+        task.wait(0.1)
+    end
+    task.wait(0.4)
+    loginGui:Destroy()
+end
+
+-- ═══════════════════════════════════════════
+--  🎨 UI HELPERS
+-- ═══════════════════════════════════════════
+local function corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
+end
+
+local function stroke(parent, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or C.stroke
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function gradient(parent, c1, c2, rotation)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c1, c2)
+    g.Rotation = rotation or 0
+    g.Parent = parent
+    return g
+end
+
+local function tween(obj, time, props, style, dir)
+    local t = TweenService:Create(
+        obj,
+        TweenInfo.new(time, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out),
+        props
+    )
+    t:Play()
+    return t
+end
+
+local function label(parent, text, size, pos, font, textSize, color, align)
+    local l = Instance.new("TextLabel")
+    l.Size = size
+    l.Position = pos
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = color or C.text
+    l.Font = font or Enum.Font.Gotham
+    l.TextSize = textSize or 12
+    l.TextXAlignment = align or Enum.TextXAlignment.Left
+    l.Parent = parent
+    return l
+end
+
+local function icon(parent)
+    local i = Instance.new("ImageLabel")
+    i.Name = "Icon"
+    i.Size = UDim2.fromScale(1, 1)
+    i.Position = UDim2.fromScale(0, 0)
+    i.BackgroundTransparency = 1
+    i.Image = ICON_ID
+    i.ScaleType = Enum.ScaleType.Fit
+    i.Active = false
+    i.Parent = parent
+    return i
+end
+
+local function card(parent, size, pos)
+    local f = Instance.new("Frame")
+    f.Size = size
+    f.Position = pos
+    f.BackgroundColor3 = C.card
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    corner(f, 10)
+    stroke(f, C.stroke, 1, 0.4)
+    return f
+end
+
+local function pressable(btn)
+    local sc = Instance.new("UIScale")
+    sc.Scale = 1
+    sc.Parent = btn
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            tween(sc, 0.1, { Scale = 0.92 })
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            tween(sc, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+        end
+    end)
+    return sc
+end
+
+-- ═══════════════════════════════════════════
+--  ⏳ LOADING SCREEN
+-- ═══════════════════════════════════════════
+local guiParent = player:FindFirstChild("PlayerGui") or CoreGui
+
+local loaderGui = Instance.new("ScreenGui")
+loaderGui.Name = "FlyModuleLoader"
+loaderGui.ResetOnSpawn = false
+loaderGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+loaderGui.IgnoreGuiInset = true
+loaderGui.DisplayOrder = 1000
+loaderGui.Parent = guiParent
+
+local ldim = Instance.new("Frame")
+ldim.Size = UDim2.fromScale(1, 1)
+ldim.BackgroundColor3 = Color3.fromRGB(226, 229, 238)
+ldim.BackgroundTransparency = 1
+ldim.BorderSizePixel = 0
+ldim.Parent = loaderGui
+
+local LOAD_W, LOAD_H = 300, 184
+
+local loadCard = Instance.new("CanvasGroup")
+loadCard.AnchorPoint = Vector2.new(0.5, 0.5)
+loadCard.Position = UDim2.fromScale(0.5, 0.5)
+loadCard.Size = UDim2.fromOffset(LOAD_W, LOAD_H)
+loadCard.BackgroundColor3 = C.panel
+loadCard.BorderSizePixel = 0
+loadCard.GroupTransparency = 1
+loadCard.Parent = loaderGui
+corner(loadCard, 20)
+stroke(loadCard, C.accent2, 1.5, 0.6)
+gradient(loadCard, Color3.fromRGB(255, 255, 255), Color3.fromRGB(240, 242, 248), 90)
+
+local loadScale = Instance.new("UIScale")
+loadScale.Scale = 0.9
+loadScale.Parent = loadCard
+
+local ringHolder = Instance.new("Frame")
+ringHolder.Size = UDim2.fromOffset(66, 66)
+ringHolder.Position = UDim2.new(0.5, -33, 0, 20)
+ringHolder.BackgroundTransparency = 1
+ringHolder.Parent = loadCard
+
+local spinRing = Instance.new("Frame")
+spinRing.Size = UDim2.fromScale(1, 1)
+spinRing.BackgroundTransparency = 1
+spinRing.BorderSizePixel = 0
+spinRing.Parent = ringHolder
+corner(spinRing, 33)
+local spinStroke = stroke(spinRing, Color3.new(1, 1, 1), 3, 0)
+local spinGrad = Instance.new("UIGradient")
+spinGrad.Color = ColorSequence.new(C.accent, C.accent2)
+spinGrad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0),
+    NumberSequenceKeypoint.new(0.65, 1),
+    NumberSequenceKeypoint.new(1, 1),
+})
+spinGrad.Parent = spinStroke
+
+local loadBadge = Instance.new("Frame")
+loadBadge.Size = UDim2.fromOffset(44, 44)
+loadBadge.Position = UDim2.fromOffset(11, 11)
+loadBadge.BackgroundTransparency = 1
+loadBadge.BorderSizePixel = 0
+loadBadge.Parent = ringHolder
+icon(loadBadge)
+
+local loadTitle = label(loadCard, "LA", UDim2.new(1, 0, 0, 20), UDim2.fromOffset(0, 96),
+    Enum.Font.GothamBold, 15, C.text, Enum.TextXAlignment.Center)
+
+local loadStep = label(loadCard, "Starting…", UDim2.new(1, -60, 0, 14), UDim2.fromOffset(20, 124),
+    Enum.Font.Gotham, 11, C.textDim)
+
+local loadPct = label(loadCard, "0%", UDim2.fromOffset(40, 14), UDim2.new(1, -60, 0, 124),
+    Enum.Font.GothamBold, 11, C.accent2, Enum.TextXAlignment.Right)
+
+local loadBar = Instance.new("Frame")
+loadBar.Size = UDim2.new(1, -40, 0, 6)
+loadBar.Position = UDim2.fromOffset(20, 148)
+loadBar.BackgroundColor3 = C.bg
+loadBar.BorderSizePixel = 0
+loadBar.Parent = loadCard
+corner(loadBar, 3)
+
+local loadFill = Instance.new("Frame")
+loadFill.Size = UDim2.new(0, 0, 1, 0)
+loadFill.BackgroundColor3 = Color3.new(1, 1, 1)
+loadFill.BorderSizePixel = 0
+loadFill.Parent = loadBar
+corner(loadFill, 3)
+gradient(loadFill, C.accent, C.accent2, 0)
+
+tween(ldim, 0.5, { BackgroundTransparency = 0.3 })
+tween(loadCard, 0.5, { GroupTransparency = 0 })
+tween(loadScale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
+
+local spinAngle = 0
+local loaderConn = RunService.RenderStepped:Connect(function(dt)
+    spinAngle = (spinAngle + 360 * dt) % 360
+    spinGrad.Rotation = spinAngle
+    loadPct.Text = math.floor(loadFill.Size.X.Scale * 100 + 0.5) .. "%"
+end)
+
+-- ═══════════════════════════════════════════
+--  ⚙️ PHYSICS SETTINGS
+-- ═══════════════════════════════════════════
+local function applyPhysicsSettings() end
+local function applyFpsCap() end
+
+pcall(function() setfpscap(0) end)
+
+pcall(function()
+    local ps = player:WaitForChild("PlayerScripts", 5)
+    if not ps then return end
+    local pm = ps:WaitForChild("PlayerModule", 5)
+    if not pm then return end
+    PlayerModule = require(pm)
+    Controls = PlayerModule:GetControls()
+end)
+
+UIS.TextBoxFocused:Connect(function()   typing = true  end)
+UIS.TextBoxFocusReleased:Connect(function() typing = false end)
+
+-- ─── FLY ───
+local function cleanChar(char)
+    for _,v in ipairs(char:GetDescendants()) do
+        if v.Name == "FlyScript_Vel" or v.Name == "FlyScript_Gyro" then
+            v:Destroy()
+        end
+    end
+end
+
+local function setup(char)
+    cleanChar(char)
+    root = char:WaitForChild("HumanoidRootPart", 5)
+    hum  = char:WaitForChild("Humanoid", 5)
+end
+
+local function ensureChar()
+    if root and root.Parent and hum and hum.Parent then return true end
+    if player.Character then
+        setup(player.Character)
+        return root ~= nil and hum ~= nil
+    end
+    return false
+end
+
+local function makeBV()
+    local v = Instance.new("BodyVelocity")
+    v.Name = "FlyScript_Vel"
+    v.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+    v.Velocity = curVel
+    v.Parent = root
+    return v
+end
+
+local function makeBG()
+    local g = Instance.new("BodyGyro")
+    g.Name = "FlyScript_Gyro"
+    g.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+    g.P = 8000
+    g.D = 1000
+    g.CFrame = root and root.CFrame or CFrame.new()
+    g.Parent = root
+    return g
+end
+
+if player.Character then setup(player.Character) end
+
+player.CharacterAdded:Connect(function(c)
+    flying = false
+    bv, bg = nil, nil
+    if stateConn then stateConn:Disconnect(); stateConn = nil end
+    if Controls then pcall(function() Controls:Enable() end) end
+
+    task.wait(0.5)
+
+    setup(c)
+    applyPhysicsSettings()
+    applyFpsCap()
+    refreshUI()
+end)
+
+local function startFly()
+    if not ensureChar() then
+        if DEBUG then warn("[FlyScript] ตัวละครยังไม่พร้อม") end
+        return
+    end
+
+    savedWalk = hum.WalkSpeed
+    savedJump = hum.JumpPower
+
+    bv = makeBV()
+    bg = makeBG()
+
+    curVel = Vector3.zero
+    flying = true
+
+    hum.PlatformStand = true
+    hum.WalkSpeed = 0
+    hum.JumpPower = 0
+    if Controls then pcall(function() Controls:Disable() end) end
+
+    pcall(function()
+        hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end)
+
+    if stateConn then stateConn:Disconnect() end
+    stateConn = hum.StateChanged:Connect(function(_, new)
+        if flying and (new == Enum.HumanoidStateType.Freefall
+            or new == Enum.HumanoidStateType.FallingDown
+            or new == Enum.HumanoidStateType.Ragdoll
+            or new == Enum.HumanoidStateType.Landed) then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
+    end)
+
+    refreshUI()
+end
+
+local function stopFly()
+    flying = false
+    if stateConn then stateConn:Disconnect(); stateConn = nil end
+    if bv then bv:Destroy(); bv = nil end
+    if bg then bg:Destroy(); bg = nil end
+
+    if hum then
+        hum.PlatformStand = false
+        hum.WalkSpeed = savedWalk or 16
+        hum.JumpPower = savedJump or 50
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+        pcall(function()
+            hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+        end)
+    end
+    if Controls then pcall(function() Controls:Enable() end) end
+    curVel = Vector3.zero
+    refreshUI()
+end
+
+-- ═══════════════════════════════════════════
+--  🖼️ MAIN GUI
+-- ═══════════════════════════════════════════
+local gui = Instance.new("ScreenGui")
+gui.Name = "FlyModuleUI"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.Parent = guiParent
+
+local WIN_W  = 260
+local FULL_H = 306
+local MIN_H  = 48
+
+local shell = Instance.new("Frame")
+shell.Name = "Shell"
+shell.Size = UDim2.fromOffset(WIN_W, FULL_H)
+shell.AnchorPoint = Vector2.new(0.5, 0)
+shell.Position = UDim2.new(0.5, 0, 0.5, -FULL_H / 2)
+shell.BackgroundTransparency = 1
+shell.BorderSizePixel = 0
+shell.Visible = false
+shell.Parent = gui
+
+local MIN_SCALE = 0.7
+local MAX_SCALE = 1.6
+
+local uiScale = Instance.new("UIScale")
+uiScale.Scale = 1
+uiScale.Parent = shell
+
+local targetScale = 1
+
+local function setUIScale(s)
+    s = math.clamp(s, MIN_SCALE, MAX_SCALE)
+    targetScale = s
+    return s
+end
+
+local function getUIScale()
+    return targetScale
+end
+
+local AURA_PAD    = 46
+local AURA_LAYERS = 8
+
+local aura = Instance.new("CanvasGroup")
+aura.Name = "Aura"
+aura.AnchorPoint = Vector2.new(0.5, 0.5)
+aura.Position = UDim2.fromScale(0.5, 0.5)
+aura.Size = UDim2.new(1, AURA_PAD * 2, 1, AURA_PAD * 2)
+aura.BackgroundTransparency = 1
+aura.BorderSizePixel = 0
+aura.GroupTransparency = 1
+aura.ZIndex = 1
+aura.Active = false
+aura.Parent = shell
+
+local auraScale = Instance.new("UIScale")
+auraScale.Scale = 1
+auraScale.Parent = aura
+
+local auraLayers = {}
+for i = 1, AURA_LAYERS do
+    local e = AURA_PAD * (i / AURA_LAYERS)
+    local inset = AURA_PAD - e
+    local l = Instance.new("Frame")
+    l.AnchorPoint = Vector2.new(0.5, 0.5)
+    l.Position = UDim2.fromScale(0.5, 0.5)
+    l.Size = UDim2.new(1, -2 * inset, 1, -2 * inset)
+    l.BackgroundColor3 = AURA_IDLE
+    l.BackgroundTransparency = 0.86 + 0.1 * (i / AURA_LAYERS)
+    l.BorderSizePixel = 0
+    l.Active = false
+    l.Parent = aura
+    corner(l, 16 + e)
+    auraLayers[i] = l
+end
+
+local main = Instance.new("CanvasGroup")
+main.Name = "Main"
+main.Size = UDim2.fromScale(1, 1)
+main.Position = UDim2.fromScale(0, 0)
+main.BackgroundColor3 = C.panel
+main.BorderSizePixel = 0
+main.Active = true
+main.GroupTransparency = 1
+main.ZIndex = 2
+main.Parent = shell
+corner(main, 16)
+local mainStroke = stroke(main, C.accent2, 1.5, 0.55)
+gradient(main, Color3.fromRGB(255, 255, 255), Color3.fromRGB(241, 243, 249), 90)
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 48)
+titleBar.BackgroundTransparency = 1
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+
+local badge = Instance.new("Frame")
+badge.Size = UDim2.fromOffset(28, 28)
+badge.Position = UDim2.fromOffset(14, 10)
+badge.BackgroundTransparency = 1
+badge.BorderSizePixel = 0
+badge.Parent = titleBar
+icon(badge)
+
+label(titleBar, "LA", UDim2.new(1, -130, 0, 16), UDim2.fromOffset(50, 9),
+    Enum.Font.GothamBold, 13, C.text)
+label(titleBar, "Premium", UDim2.new(1, -130, 0, 12), UDim2.fromOffset(50, 26),
+    Enum.Font.Gotham, 10, C.textDim)
+
+local function titleButton(text, xOffset, hoverColor)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.fromOffset(28, 28)
+    b.Position = UDim2.new(1, xOffset, 0, 10)
+    b.BackgroundColor3 = C.card
+    b.BorderSizePixel = 0
+    b.Text = text
+    b.TextColor3 = C.text
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.AutoButtonColor = false
+    b.Active = true
+    b.Parent = titleBar
+    corner(b, 8)
+    stroke(b, C.stroke, 1, 0.4)
+    b.MouseEnter:Connect(function() tween(b, 0.2, { BackgroundColor3 = hoverColor or C.cardHi }) end)
+    b.MouseLeave:Connect(function() tween(b, 0.25, { BackgroundColor3 = C.card }) end)
+    pressable(b)
+    return b
+end
+
+local minBtn   = titleButton("—", -72)
+local closeBtn = titleButton("✕", -38, Color3.fromRGB(214, 217, 226))
+
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, -28, 0, 1)
+divider.Position = UDim2.fromOffset(14, 47)
+divider.BackgroundColor3 = Color3.new(1, 1, 1)
+divider.BorderSizePixel = 0
+divider.Parent = main
+local divGrad = gradient(divider, C.accent, C.accent2, 0)
+divGrad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.9),
+    NumberSequenceKeypoint.new(0.5, 0.5),
+    NumberSequenceKeypoint.new(1, 0.9),
+})
+
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.Size = UDim2.new(1, -28, 1, -62)
+content.Position = UDim2.fromOffset(14, 58)
+content.BackgroundTransparency = 1
+content.Parent = main
+
+local flyBtn = Instance.new("TextButton")
+flyBtn.Size = UDim2.new(1, 0, 0, 46)
+flyBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+flyBtn.BorderSizePixel = 0
+flyBtn.Text = ""
+flyBtn.AutoButtonColor = false
+flyBtn.Active = true
+flyBtn.Selectable = false
+flyBtn.ZIndex = 5
+flyBtn.Parent = content
+corner(flyBtn, 12)
+local flyStroke = stroke(flyBtn, C.accent2, 1.5, 0.5)
+gradient(flyBtn, Color3.fromRGB(248, 249, 252), Color3.fromRGB(224, 227, 236), 20)
+
+local flyScale = Instance.new("UIScale")
+flyScale.Scale = 1
+flyScale.Parent = flyBtn
+
+local stopLayer = Instance.new("Frame")
+stopLayer.Size = UDim2.fromScale(1, 1)
+stopLayer.BackgroundColor3 = Color3.new(1, 1, 1)
+stopLayer.BackgroundTransparency = 1
+stopLayer.BorderSizePixel = 0
+stopLayer.Active = false
+stopLayer.Parent = flyBtn
+corner(stopLayer, 12)
+gradient(stopLayer, Color3.fromRGB(46, 49, 62), Color3.fromRGB(98, 102, 118), 20)
+
+local flyText = Instance.new("TextLabel")
+flyText.Size = UDim2.fromScale(1, 1)
+flyText.BackgroundTransparency = 1
+flyText.Text = "FLY"
+flyText.TextColor3 = C.text
+flyText.Font = Enum.Font.GothamBold
+flyText.TextSize = 14
+flyText.ZIndex = 7
+flyText.Parent = flyBtn
+
+local textToken = 0
+local function swapFlyText(t, color)
+    textToken += 1
+    local id = textToken
+    tween(flyText, 0.1, { TextTransparency = 1 })
+    task.delay(0.1, function()
+        if id ~= textToken then return end
+        flyText.Text = t
+        flyText.TextColor3 = color
+        tween(flyText, 0.2, { TextTransparency = 0 })
+    end)
+end
+
+local flyHover = false
+flyBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        tween(flyScale, 0.1, { Scale = 0.94 })
+    end
+end)
+flyBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        tween(flyScale, 0.4, { Scale = flyHover and 1.025 or 1 }, Enum.EasingStyle.Back)
+    end
+end)
+
+local speedCard = card(content, UDim2.new(1, 0, 0, 96), UDim2.fromOffset(0, 56))
+
+label(speedCard, "SPEED", UDim2.fromOffset(60, 22), UDim2.fromOffset(12, 8),
+    Enum.Font.GothamBold, 10, C.textDim)
+
+local speedInput = Instance.new("TextBox")
+speedInput.Size = UDim2.fromOffset(74, 22)
+speedInput.Position = UDim2.new(1, -86, 0, 8)
+speedInput.BackgroundColor3 = C.bg
+speedInput.BorderSizePixel = 0
+speedInput.Text = tostring(SPEED)
+speedInput.TextColor3 = C.accent
+speedInput.PlaceholderText = "5 - 5000"
+speedInput.PlaceholderColor3 = C.textDim
+speedInput.Font = Enum.Font.GothamBold
+speedInput.TextSize = 12
+speedInput.TextXAlignment = Enum.TextXAlignment.Center
+speedInput.ClearTextOnFocus = false
+speedInput.Parent = speedCard
+corner(speedInput, 6)
+local speedStroke = stroke(speedInput, C.stroke, 1, 0.2)
+speedInput.Focused:Connect(function() tween(speedStroke, 0.2, { Color = C.accent2 }) end)
+speedInput.FocusLost:Connect(function() tween(speedStroke, 0.25, { Color = C.stroke }) end)
+
+local slider = Instance.new("Frame")
+slider.Size = UDim2.new(1, -24, 0, 6)
+slider.Position = UDim2.fromOffset(12, 44)
+slider.BackgroundColor3 = C.bg
+slider.BorderSizePixel = 0
+slider.Parent = speedCard
+corner(slider, 3)
+
+local initAlpha = math.log(SPEED / MIN_SPEED) / math.log(MAX_SPEED / MIN_SPEED)
+local targetAlpha, dispAlpha = initAlpha, initAlpha
+
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(initAlpha, 0, 1, 0)
+fill.BackgroundColor3 = Color3.new(1, 1, 1)
+fill.BorderSizePixel = 0
+fill.Parent = slider
+corner(fill, 3)
+gradient(fill, C.accent2, C.accent, 0)
+
+local knob = Instance.new("Frame")
+knob.Size = UDim2.fromOffset(14, 14)
+knob.Position = UDim2.new(initAlpha, 0, 0.5, 0)
+knob.AnchorPoint = Vector2.new(0.5, 0.5)
+knob.BackgroundColor3 = Color3.new(1, 1, 1)
+knob.BorderSizePixel = 0
+knob.ZIndex = 2
+knob.Parent = slider
+corner(knob, 7)
+stroke(knob, C.accent, 2, 0.1)
+
+local hitbox = Instance.new("TextButton")
+hitbox.Size = UDim2.new(1, 0, 4, 0)
+hitbox.Position = UDim2.new(0, 0, 0.5, 0)
+hitbox.AnchorPoint = Vector2.new(0, 0.5)
+hitbox.BackgroundTransparency = 1
+hitbox.Text = ""
+hitbox.ZIndex = 3
+hitbox.Active = true
+hitbox.Parent = slider
+
+local function setSpeedValue(v)
+    local n = tonumber(v)
+    if not n then return SPEED end
+    n = math.clamp(math.floor(n + 0.5), MIN_SPEED, MAX_SPEED)
+    SPEED = n
+
+    targetAlpha = math.log(n / MIN_SPEED) / math.log(MAX_SPEED / MIN_SPEED)
+
+    if speedInput.Text ~= tostring(n) then
+        speedInput.Text = tostring(n)
+    end
+    return n
+end
+
+setSpeedValue(SPEED)
+
+speedInput.FocusLost:Connect(function()
+    setSpeedValue(speedInput.Text)
+    speedInput.Text = tostring(SPEED)
+end)
+
+local chipRow = Instance.new("Frame")
+chipRow.Size = UDim2.new(1, -24, 0, 24)
+chipRow.Position = UDim2.fromOffset(12, 62)
+chipRow.BackgroundTransparency = 1
+chipRow.Parent = speedCard
+
+local chipLayout = Instance.new("UIListLayout")
+chipLayout.FillDirection = Enum.FillDirection.Horizontal
+chipLayout.Padding = UDim.new(0, 6)
+chipLayout.SortOrder = Enum.SortOrder.LayoutOrder
+chipLayout.Parent = chipRow
+
+for i, v in ipairs({ 50, 100, 500, 1000 }) do
+    local chip = Instance.new("TextButton")
+    chip.LayoutOrder = i
+    chip.Size = UDim2.new(0.25, -5, 1, 0)
+    chip.BackgroundColor3 = C.bg
+    chip.BorderSizePixel = 0
+    chip.Text = tostring(v)
+    chip.TextColor3 = C.textDim
+    chip.Font = Enum.Font.GothamBold
+    chip.TextSize = 11
+    chip.AutoButtonColor = false
+    chip.Active = true
+    chip.Parent = chipRow
+    corner(chip, 6)
+    local cs = stroke(chip, C.stroke, 1, 0.3)
+    pressable(chip)
+
+    chip.MouseEnter:Connect(function()
+        tween(chip, 0.2, { TextColor3 = C.text })
+        tween(cs, 0.2, { Color = C.accent2 })
+    end)
+    chip.MouseLeave:Connect(function()
+        tween(chip, 0.25, { TextColor3 = C.textDim })
+        tween(cs, 0.25, { Color = C.stroke })
+    end)
+    chip.Activated:Connect(function() setSpeedValue(v) end)
+end
+
+local keybindRow = card(content, UDim2.new(1, 0, 0, 38), UDim2.fromOffset(0, 162))
+
+local keybindTitle = label(keybindRow, "Toggle Key", UDim2.new(1, -110, 1, 0), UDim2.fromOffset(12, 0),
+    Enum.Font.GothamMedium, 11, C.textDim)
+
+local keybindBtn = Instance.new("TextButton")
+keybindBtn.Size = UDim2.fromOffset(80, 24)
+keybindBtn.Position = UDim2.new(1, -90, 0.5, -12)
+keybindBtn.BackgroundColor3 = C.bg
+keybindBtn.BorderSizePixel = 0
+keybindBtn.Text = TOGGLE_KEY.Name
+keybindBtn.TextColor3 = C.accent
+keybindBtn.Font = Enum.Font.GothamBold
+keybindBtn.TextSize = 11
+keybindBtn.AutoButtonColor = false
+keybindBtn.Active = true
+keybindBtn.Parent = keybindRow
+corner(keybindBtn, 6)
+local keybindStroke = stroke(keybindBtn, C.accent2, 1, 0.5)
+pressable(keybindBtn)
+
+local function resetKeybindUI()
+    capturingKey = false
+    tween(keybindBtn, 0.2, { TextColor3 = C.accent })
+    tween(keybindStroke, 0.2, { Color = C.accent2 })
+    keybindTitle.Text = "Toggle Key"
+    tween(keybindTitle, 0.2, { TextColor3 = C.textDim })
+    updateKeybindLabel()
+end
+
+updateKeybindLabel = function()
+    if TOGGLE_MOUSE == Enum.UserInputType.MouseButton1 then
+        keybindBtn.Text = "LMB"
+    elseif TOGGLE_MOUSE == Enum.UserInputType.MouseButton2 then
+        keybindBtn.Text = "RMB"
+    elseif TOGGLE_MOUSE == Enum.UserInputType.MouseButton3 then
+        keybindBtn.Text = "MMB"
+    else
+        keybindBtn.Text = TOGGLE_KEY.Name
+    end
+end
+
+local statusPill = Instance.new("Frame")
+statusPill.Size = UDim2.fromOffset(86, 22)
+statusPill.Position = UDim2.fromOffset(0, 212)
+statusPill.BackgroundColor3 = C.card
+statusPill.BorderSizePixel = 0
+statusPill.Parent = content
+corner(statusPill, 11)
+stroke(statusPill, C.stroke, 1, 0.4)
+
+local statusDot = Instance.new("Frame")
+statusDot.Size = UDim2.fromOffset(8, 8)
+statusDot.Position = UDim2.new(0, 10, 0.5, -4)
+statusDot.BackgroundColor3 = C.textDim
+statusDot.BorderSizePixel = 0
+statusDot.Parent = statusPill
+corner(statusDot, 4)
+
+local status = label(statusPill, "Idle", UDim2.new(1, -26, 1, 0), UDim2.fromOffset(24, 0),
+    Enum.Font.GothamBold, 11, C.textDim)
+
+label(content, "WASD • Camera-relative", UDim2.new(1, -94, 0, 22), UDim2.fromOffset(94, 212),
+    Enum.Font.Gotham, 10, C.textDim, Enum.TextXAlignment.Right)
+
+local FLOAT_SIZE = 60
+
+local floatBtn = Instance.new("TextButton")
+floatBtn.Name = "FloatButton"
+floatBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+floatBtn.Position = UDim2.fromScale(0.5, 0.5)
+floatBtn.Size = UDim2.fromOffset(0, 0)
+floatBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+floatBtn.BorderSizePixel = 0
+floatBtn.Text = ""
+floatBtn.AutoButtonColor = false
+floatBtn.Active = true
+floatBtn.Visible = false
+floatBtn.ZIndex = 10
+floatBtn.Parent = gui
+corner(floatBtn, FLOAT_SIZE / 2)
+local floatStroke = stroke(floatBtn, C.accent2, 2.5, 0.45)
+
+local floatIconPad = Instance.new("UIPadding")
+floatIconPad.PaddingTop = UDim.new(0, 10)
+floatIconPad.PaddingBottom = UDim.new(0, 10)
+floatIconPad.PaddingLeft = UDim.new(0, 10)
+floatIconPad.PaddingRight = UDim.new(0, 10)
+floatIconPad.Parent = floatBtn
+icon(floatBtn)
+
+local pulseRing = Instance.new("Frame")
+pulseRing.AnchorPoint = Vector2.new(0.5, 0.5)
+pulseRing.Position = UDim2.fromScale(0.5, 0.5)
+pulseRing.Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE)
+pulseRing.BackgroundTransparency = 1
+pulseRing.BorderSizePixel = 0
+pulseRing.Active = false
+pulseRing.Parent = floatBtn
+corner(pulseRing, 100)
+local pulseStroke = stroke(pulseRing, C.accent2, 2, 1)
+
+local floatPulseId = 0
+local function startFloatPulse()
+    floatPulseId += 1
+    local id = floatPulseId
+    task.spawn(function()
+        while floatPulseId == id do
+            pulseRing.Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE)
+            pulseStroke.Transparency = 0.2
+            tween(pulseRing, 1.6, { Size = UDim2.fromOffset(FLOAT_SIZE + 40, FLOAT_SIZE + 40) })
+            tween(pulseStroke, 1.6, { Transparency = 1 })
+            task.wait(1.8)
+        end
+    end)
+end
+local function stopFloatPulse()
+    floatPulseId += 1
+    pulseStroke.Transparency = 1
+end
+
+floatBtn.MouseEnter:Connect(function()
+    tween(floatBtn, 0.25, { Size = UDim2.fromOffset(FLOAT_SIZE + 6, FLOAT_SIZE + 6) }, Enum.EasingStyle.Back)
+end)
+floatBtn.MouseLeave:Connect(function()
+    tween(floatBtn, 0.3, { Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE) })
+end)
+
+local dotPulseId = 0
+
+refreshUI = function()
+    if flying then
+        swapFlyText("FLY", Color3.new(1, 1, 1))
+        tween(stopLayer, 0.45, { BackgroundTransparency = 0 })
+        tween(flyStroke, 0.4, { Color = C.danger })
+        tween(mainStroke, 0.5, { Color = C.success })
+        tween(floatStroke, 0.5, { Color = C.success })
+        status.Text = "Flying"
+        tween(status, 0.3, { TextColor3 = C.success })
+        tween(statusDot, 0.3, { BackgroundColor3 = C.success })
+        for _, l in ipairs(auraLayers) do
+            tween(l, 0.7, { BackgroundColor3 = AURA_FLY })
+        end
+
+        dotPulseId += 1
+        local id = dotPulseId
+        task.spawn(function()
+            while flying and dotPulseId == id do
+                tween(statusDot, 0.7, { BackgroundTransparency = 0.65 }, Enum.EasingStyle.Sine)
+                task.wait(0.7)
+                tween(statusDot, 0.7, { BackgroundTransparency = 0 }, Enum.EasingStyle.Sine)
+                task.wait(0.7)
+            end
+            statusDot.BackgroundTransparency = 0
+        end)
+    else
+        dotPulseId += 1
+        swapFlyText("FLY", C.text)
+        tween(stopLayer, 0.45, { BackgroundTransparency = 1 })
+        tween(flyStroke, 0.4, { Color = C.accent2 })
+        tween(mainStroke, 0.5, { Color = C.accent2 })
+        tween(floatStroke, 0.5, { Color = C.accent2 })
+        status.Text = "Idle"
+        tween(status, 0.3, { TextColor3 = C.textDim })
+        tween(statusDot, 0.3, { BackgroundColor3 = C.textDim, BackgroundTransparency = 0 })
+        for _, l in ipairs(auraLayers) do
+            tween(l, 0.7, { BackgroundColor3 = AURA_IDLE })
+        end
+    end
+end
+refreshUI()
+
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name = "ResizeHandle"
+resizeHandle.Size = UDim2.fromOffset(20, 20)
+resizeHandle.Position = UDim2.new(1, -20, 1, -20)
+resizeHandle.BackgroundTransparency = 1
+resizeHandle.Text = "◢"
+resizeHandle.TextColor3 = C.textDim
+resizeHandle.TextTransparency = 0.4
+resizeHandle.Font = Enum.Font.GothamBold
+resizeHandle.TextSize = 11
+resizeHandle.AutoButtonColor = false
+resizeHandle.Active = true
+resizeHandle.ZIndex = 10
+resizeHandle.Parent = main
+
+local resizing = false
+local resizeStartX, resizeStartY, resizeStartScale
+local lastClickTime = 0
+
+resizeHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        resizing = true
+        resizeStartX = input.Position.X
+        resizeStartY = input.Position.Y
+        resizeStartScale = targetScale
+
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local now = tick()
+            if now - lastClickTime < 0.35 then
+                setUIScale(1)
+                resizing = false
+            end
+            lastClickTime = now
+        end
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local dx = input.Position.X - resizeStartX
+        local dy = input.Position.Y - resizeStartY
+        setUIScale(resizeStartScale + (dx + dy) / 400)
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        resizing = false
+    end
+end)
+
+local dragging, dragStart, startPos = false, nil, nil
+local tgtX, tgtY = shell.Position.X.Offset, shell.Position.Y.Offset
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = shell.Position
+        tgtX, tgtY = startPos.X.Offset, startPos.Y.Offset
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dragStart
+        tgtX = startPos.X.Offset + d.X
+        tgtY = startPos.Y.Offset + d.Y
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+local uiOpen    = false
+local uiBusy    = false
+local uiLoaded  = false
+
+local function openUI()
+    if uiOpen or uiBusy then return end
+    uiBusy = true
+    uiOpen = true
+
+    stopFloatPulse()
+    tween(floatBtn, 0.22, { Size = UDim2.fromOffset(0, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+    local s = targetScale
+    main.GroupTransparency = 1
+    aura.GroupTransparency = 1
+    uiScale.Scale = s * 0.9
+    shell.Visible = true
+    tween(main, 0.35, { GroupTransparency = 0 })
+    tween(aura, 0.7, { GroupTransparency = 0 })
+    tween(uiScale, 0.55, { Scale = s }, Enum.EasingStyle.Back)
+
+    task.delay(0.55, function()
+        floatBtn.Visible = false
+        uiBusy = false
+    end)
+end
+
+local function closeUI()
+    if not uiOpen or uiBusy then return end
+    uiBusy = true
+    uiOpen = false
+    resizing, dragging = false, false
+
+    local s = targetScale
+    uiScale.Scale = s
+    tween(main, 0.28, { GroupTransparency = 1 })
+    tween(aura, 0.35, { GroupTransparency = 1 })
+    tween(uiScale, 0.3, { Scale = s * 0.9 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+    task.delay(0.32, function()
+        shell.Visible = false
+        uiScale.Scale = s
+
+        floatBtn.Size = UDim2.fromOffset(0, 0)
+        floatBtn.Visible = true
+        tween(floatBtn, 0.5, { Size = UDim2.fromOffset(FLOAT_SIZE, FLOAT_SIZE) }, Enum.EasingStyle.Back)
+        startFloatPulse()
+        uiBusy = false
+    end)
+end
+
+local function toggleUI()
+    if uiOpen then closeUI() else openUI() end
+end
+
+closeBtn.Activated:Connect(closeUI)
+
+local fDrag, fMoved, fStart, fPos = false, false, nil, nil
+floatBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        fDrag, fMoved = true, false
+        fStart = input.Position
+        fPos = floatBtn.Position
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if fDrag and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - fStart
+        if d.Magnitude > 6 then fMoved = true end
+        if fMoved then
+            floatBtn.Position = UDim2.new(fPos.X.Scale, fPos.X.Offset + d.X,
+                                           fPos.Y.Scale, fPos.Y.Offset + d.Y)
+        end
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if fDrag and (input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        fDrag = false
+        if not fMoved then openUI() end
+    end
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    minBtn.Text = minimized and "□" or "—"
+    resizeHandle.Visible = not minimized
+    tween(shell, 0.45, { Size = UDim2.fromOffset(WIN_W, minimized and MIN_H or FULL_H) },
+        Enum.EasingStyle.Quint)
+end)
+
+flyBtn.Activated:Connect(function()
+    if flying then stopFly() else startFly() end
+end)
+flyBtn.MouseEnter:Connect(function()
+    flyHover = true
+    tween(flyStroke, 0.2, { Thickness = 3, Transparency = 0.2 })
+    tween(flyScale, 0.3, { Scale = 1.025 }, Enum.EasingStyle.Back)
+end)
+flyBtn.MouseLeave:Connect(function()
+    flyHover = false
+    tween(flyStroke, 0.25, { Thickness = 1.5, Transparency = 0.5 })
+    tween(flyScale, 0.3, { Scale = 1 })
+end)
+
+keybindBtn.Activated:Connect(function()
+    if capturingKey then
+        resetKeybindUI()
+        return
+    end
+    capturingKey = true
+    captureStart = tick()
+    keybindBtn.Text = "..."
+    tween(keybindBtn, 0.2, { TextColor3 = C.danger })
+    tween(keybindStroke, 0.2, { Color = C.danger })
+    keybindTitle.Text = "Press any key"
+    tween(keybindTitle, 0.2, { TextColor3 = C.accent })
+end)
+
+UIS.InputBegan:Connect(function(i, gp)
+    if capturingKey then
+        if tick() - captureStart < 0.2 then return end
+        if gp and i.UserInputType == Enum.UserInputType.Keyboard then return end
+
+        local uiType = i.UserInputType
+        if uiType == Enum.UserInputType.Keyboard then
+            if i.KeyCode == Enum.KeyCode.Unknown or i.KeyCode == Enum.KeyCode.Escape then
+                resetKeybindUI()
+                return
+            end
+            TOGGLE_KEY = i.KeyCode
+            TOGGLE_MOUSE = nil
+        elseif uiType == Enum.UserInputType.MouseButton1
+            or uiType == Enum.UserInputType.MouseButton2
+            or uiType == Enum.UserInputType.MouseButton3 then
+            TOGGLE_MOUSE = uiType
+        else
+            resetKeybindUI()
+            return
+        end
+
+        resetKeybindUI()
+        return
+    end
+
+    if gp then return end
+    if typing then return end
+
+    if uiLoaded and i.UserInputType == Enum.UserInputType.Keyboard and i.KeyCode == UI_HIDE_KEY then
+        toggleUI()
+        return
+    end
+
+    local isToggle
+    if TOGGLE_MOUSE then
+        isToggle = (i.UserInputType == TOGGLE_MOUSE)
+    else
+        isToggle = (i.UserInputType == Enum.UserInputType.Keyboard
+                    and i.KeyCode == TOGGLE_KEY)
+    end
+
+    if isToggle then
+        if flying then stopFly() else startFly() end
+    end
+end)
+
+local sliderDragging = false
+local function updateSlider(mouseX)
+    local ax = slider.AbsolutePosition.X
+    local aw = slider.AbsoluteSize.X
+    local alpha = math.clamp((mouseX - ax) / aw, 0, 1)
+    local ratio = MAX_SPEED / MIN_SPEED
+    setSpeedValue(MIN_SPEED * (ratio ^ alpha))
+end
+hitbox.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        sliderDragging = true
+        updateSlider(input.Position.X)
+        tween(knob, 0.2, { Size = UDim2.fromOffset(18, 18) }, Enum.EasingStyle.Back)
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if sliderDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        updateSlider(input.Position.X)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        if sliderDragging then
+            tween(knob, 0.25, { Size = UDim2.fromOffset(14, 14) }, Enum.EasingStyle.Back)
+        end
+        sliderDragging = false
+    end
+end)
+
+local auraClock = 0
+
+local renderConn = RunService.RenderStepped:Connect(function(dt)
+    if math.abs(targetAlpha - dispAlpha) > 0.0003 then
+        dispAlpha += (targetAlpha - dispAlpha) * (1 - math.exp(-24 * dt))
+        fill.Size     = UDim2.new(dispAlpha, 0, 1, 0)
+        knob.Position = UDim2.new(dispAlpha, 0, 0.5, 0)
+    elseif dispAlpha ~= targetAlpha then
+        dispAlpha = targetAlpha
+        fill.Size     = UDim2.new(dispAlpha, 0, 1, 0)
+        knob.Position = UDim2.new(dispAlpha, 0, 0.5, 0)
+    end
+
+    if not shell.Visible then return end
+
+    local p = shell.Position
+    local dx, dy = tgtX - p.X.Offset, tgtY - p.Y.Offset
+    if math.abs(dx) > 0.05 or math.abs(dy) > 0.05 then
+        local a = 1 - math.exp(-28 * dt)
+        shell.Position = UDim2.new(p.X.Scale, p.X.Offset + dx * a,
+                                   p.Y.Scale, p.Y.Offset + dy * a)
+    end
+
+    if uiOpen and not uiBusy then
+        local ds = targetScale - uiScale.Scale
+        if math.abs(ds) > 0.0005 then
+            uiScale.Scale += ds * (1 - math.exp(-18 * dt))
+        end
+    end
+
+    auraClock += dt * (flying and 3.2 or 2)
+    local amp = flying and 0.035 or 0.02
+    auraScale.Scale = 1 + amp * math.sin(auraClock)
+end)
+
+local wdControlsAccum = 0
+
+RunService.PreSimulation:Connect(function(dt)
+    if not flying then return end
+
+    if not root or not root.Parent or not hum or not hum.Parent then
+        if not ensureChar() then
+            stopFly()
+            return
+        end
+    end
+
+    if not bv or bv.Parent ~= root then
+        if bv then pcall(function() bv:Destroy() end) end
+        bv = makeBV()
+    end
+    if not bg or bg.Parent ~= root then
+        if bg then pcall(function() bg:Destroy() end) end
+        bg = makeBG()
+    end
+
+    hum.PlatformStand = true
+
+    wdControlsAccum += dt
+    if wdControlsAccum >= 0.5 then
+        wdControlsAccum = 0
+        if Controls then pcall(function() Controls:Disable() end) end
+    end
+
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local cf = cam.CFrame
+
+    local dir = Vector3.zero
+    if not typing then
+        if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cf.LookVector  end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cf.LookVector  end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cf.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cf.RightVector end
+    end
+
+    local target = dir.Magnitude > 0.01 and dir.Unit * SPEED or Vector3.zero
+    curVel = curVel:Lerp(target, 1 - math.exp(-VEL_SMOOTH * dt))
+    bv.Velocity = curVel
+end)
+
+RunService:BindToRenderStep("FlyGyro", Enum.RenderPriority.Camera.Value + 1, function()
+    if flying and bg and bg.Parent then
+        local cam = workspace.CurrentCamera
+        if cam then bg.CFrame = cam.CFrame end
+    end
+end)
+
+player.CharacterRemoving:Connect(function()
+    if flying then stopFly() end
+end)
+
+local env = (typeof(getgenv) == "function" and getgenv()) or _G
+env.FlyUI = {
+    setScale   = setUIScale,
+    getScale   = getUIScale,
+    setSpeed   = function(v) return setSpeedValue(v) end,
+    getSpeed   = function() return SPEED end,
+    toggle     = function() if flying then stopFly() else startFly() end end,
+    show       = function() openUI() end,
+    hide       = function() closeUI() end,
+    toggleUI   = toggleUI,
+    destroy    = function()
+        if loaderConn then loaderConn:Disconnect() end
+        if renderConn then renderConn:Disconnect() end
+        if flying then stopFly() end
+        pcall(function() RunService:UnbindFromRenderStep("FlyGyro") end)
+        gui:Destroy()
+        loaderGui:Destroy()
+    end,
+    fixPhysics = function() applyPhysicsSettings(); applyFpsCap() end,
+}
+
+task.spawn(function()
+    local steps = {
+        { "Checking access…",    0.22 },
+        { "Applying physics…",   0.48 },
+        { "Loading controls…",   0.74 },
+        { "Building interface…", 0.94 },
+        { "Ready!",              1.00 },
+    }
+
+    for _, s in ipairs(steps) do
+        loadStep.Text = s[1]
+        tween(loadFill, 0.4, { Size = UDim2.new(s[2], 0, 1, 0) })
+        task.wait(0.4)
+    end
+
+    task.wait(0.25)
+
+    tween(loadCard, 0.4, { GroupTransparency = 1 })
+    tween(loadScale, 0.4, { Scale = 1.06 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+    tween(ldim, 0.45, { BackgroundTransparency = 1 })
+    task.wait(0.45)
+
+    if loaderConn then loaderConn:Disconnect() loaderConn = nil end
+    loaderGui:Destroy()
+
+    uiLoaded = true
+    openUI()
+end)
